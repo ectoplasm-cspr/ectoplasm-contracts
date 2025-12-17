@@ -1,0 +1,21 @@
+# Odra configuration file for DEX smart contracts
+
+# Flipper example contract
+[[contracts]]
+fqn = "flipper::Flipper"
+
+# LP Token contract
+[[contracts]]
+fqn = "token::LpToken"
+
+# DEX Pair contract
+[[contracts]]
+fqn = "dex::pair::Pair"
+
+# DEX Factory contract
+[[contracts]]
+fqn = "dex::factory::Factory"
+
+# DEX Router contract
+[[contracts]]
+fqn = "dex::router::Router"
