@@ -1,4 +1,4 @@
-# Casper DEX - Decentralized Exchange Smart Contracts
+# Ectoplasm Contracts - Decentralized Exchange Smart Contracts
 
 A fully-featured Decentralized Exchange (DEX) implementation for the Casper Network, built using the Odra framework. This DEX implements an Automated Market Maker (AMM) model similar to Uniswap V2.
 
@@ -67,7 +67,7 @@ CEP-18 compatible token representing liquidity provider shares.
 ## 📁 Project Structure
 
 ```
-my-project/
+ectoplasm-contracts/
 ├── Cargo.toml              # Rust dependencies
 ├── Odra.toml               # Odra contract configuration
 ├── src/
@@ -102,7 +102,7 @@ my-project/
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd my-project
+cd ectoplasm-contracts
 ```
 
 2. Install dependencies:
