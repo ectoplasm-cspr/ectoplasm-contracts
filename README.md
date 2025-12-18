@@ -4,7 +4,7 @@ A fully-featured Decentralized Exchange (DEX) implementation for the Casper Netw
 
 ## 🏗️ Architecture
 
-The DEX consists of 4 main components:
+The DEX consists of four main components:
 
 ### 1. Factory Contract (`dex::factory::Factory`)
 The Factory is responsible for creating and managing trading pairs.
