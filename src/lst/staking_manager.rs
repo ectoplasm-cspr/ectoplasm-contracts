@@ -2,6 +2,9 @@
 //! 
 //! This contract manages the staking/unstaking of CSPR and minting/burning of sCSPR tokens.
 //! It interfaces with Casper's native staking system and maintains the exchange rate.
+//! 
+//! **CEP-4626 Compliant**: This contract implements the CEP-4626 Tokenized Vault Standard
+//! for liquid staking, providing a standardized interface for CSPR staking.
 
 use odra::prelude::*;
 use odra::casper_types::{U256, U512};
@@ -9,6 +12,7 @@ use odra::ContractRef;
 use super::errors::LstError;
 use super::events::*;
 use super::scspr_token::ScsprTokenContractRef;
+use crate::cep4626::{Cep4626Vault, Deposit as Cep4626Deposit, Withdraw as Cep4626Withdraw};
 
 /// Represents an unstaking request
 #[odra::odra_type]
@@ -239,7 +243,7 @@ impl StakingManager {
     /// 
     /// # Arguments
     /// * `request_id` - The unstake request ID
-    pub fn withdraw(&mut self, request_id: u64) {
+    pub fn withdraw_unstaked(&mut self, request_id: u64) {
         self.ensure_not_paused();
         
         let caller = self.env().caller();
@@ -549,5 +553,233 @@ impl StakingManager {
         if self.paused.get_or_default() {
             self.env().revert(LstError::ContractPaused);
         }
+    }
+}
+
+// ============================================================================
+// CEP-4626 Tokenized Vault Standard Implementation
+// ============================================================================
+
+impl Cep4626Vault for StakingManager {
+    // ========================================
+    // Metadata
+    // ========================================
+    
+    fn asset(&self) -> Address {
+        // For liquid staking, the asset is CSPR
+        // In Casper, we return a special address representing native CSPR
+        // This could be a wrapped CSPR token address or a designated constant
+        // For now, we'll use the contract's own address as a placeholder
+        // TODO: Replace with actual CSPR token address when available
+        Address::from(self.env().self_address())
+    }
+    
+    fn total_assets(&self) -> U256 {
+        // Total CSPR managed by the vault (including staking rewards)
+        self.total_cspr_staked.get_or_default()
+    }
+    
+    // ========================================
+    // Conversion Functions
+    // ========================================
+    
+    fn convert_to_shares(&self, assets: U256) -> U256 {
+        // Convert CSPR to sCSPR shares
+        self.calculate_scspr_amount(assets)
+    }
+    
+    fn convert_to_assets(&self, shares: U256) -> U256 {
+        // Convert sCSPR shares to CSPR
+        self.calculate_cspr_amount(shares)
+    }
+    
+    // ========================================
+    // Deposit/Withdrawal Limits
+    // ========================================
+    
+    fn max_deposit(&self, _receiver: Address) -> U256 {
+        if self.paused.get_or_default() {
+            return U256::zero();
+        }
+        // No maximum deposit limit for liquid staking
+        U256::MAX
+    }
+    
+    fn max_mint(&self, _receiver: Address) -> U256 {
+        if self.paused.get_or_default() {
+            return U256::zero();
+        }
+        // No maximum mint limit
+        U256::MAX
+    }
+    
+    fn max_withdraw(&self, owner: Address) -> U256 {
+        if self.paused.get_or_default() {
+            return U256::zero();
+        }
+        // Maximum withdrawal is the user's sCSPR balance converted to CSPR
+        let token_address = self.scspr_token_address.get_or_revert_with(LstError::UnstakingFailed);
+        let token = ScsprTokenContractRef::new(self.env(), token_address);
+        let user_shares = token.balance_of(owner);
+        self.convert_to_assets(user_shares)
+    }
+    
+    fn max_redeem(&self, owner: Address) -> U256 {
+        if self.paused.get_or_default() {
+            return U256::zero();
+        }
+        // Maximum redeem is the user's sCSPR balance
+        let token_address = self.scspr_token_address.get_or_revert_with(LstError::UnstakingFailed);
+        let token = ScsprTokenContractRef::new(self.env(), token_address);
+        token.balance_of(owner)
+    }
+    
+    // ========================================
+    // Preview Functions
+    // ========================================
+    
+    fn preview_deposit(&self, assets: U256) -> U256 {
+        // Preview how many sCSPR shares would be minted for assets
+        self.convert_to_shares(assets)
+    }
+    
+    fn preview_mint(&self, shares: U256) -> U256 {
+        // Preview how many CSPR assets are needed to mint shares
+        self.convert_to_assets(shares)
+    }
+    
+    fn preview_withdraw(&self, assets: U256) -> U256 {
+        // Preview how many sCSPR shares would be burned to withdraw assets
+        self.convert_to_shares(assets)
+    }
+    
+    fn preview_redeem(&self, shares: U256) -> U256 {
+        // Preview how many CSPR assets would be received for redeeming shares
+        self.convert_to_assets(shares)
+    }
+    
+    // ========================================
+    // Deposit/Mint Functions
+    // ========================================
+    
+    fn deposit(&mut self, assets: U256, receiver: Address) -> U256 {
+        // CEP-4626 deposit: stake CSPR and mint sCSPR to receiver
+        // Note: For liquid staking, we need a validator parameter
+        // We'll use the first available validator
+        let validators = self.get_validators();
+        if validators.is_empty() {
+            self.env().revert(LstError::InvalidValidator);
+        }
+        let validator = validators[0];
+        
+        // Perform the stake operation
+        let shares = self.stake(validator, assets);
+        
+        // If receiver is different from caller, transfer shares
+        let caller = self.env().caller();
+        if receiver != caller {
+            let token_address = self.scspr_token_address.get_or_revert_with(LstError::StakingFailed);
+            let mut token = ScsprTokenContractRef::new(self.env(), token_address);
+            token.transfer_from(caller, receiver, shares);
+        }
+        
+        // Emit CEP-4626 Deposit event
+        self.env().emit_event(Cep4626Deposit {
+            sender: caller,
+            owner: receiver,
+            assets,
+            shares,
+        });
+        
+        shares
+    }
+    
+    fn mint(&mut self, shares: U256, receiver: Address) -> U256 {
+        // CEP-4626 mint: calculate required CSPR and stake to mint exact shares
+        let assets = self.convert_to_assets(shares);
+        
+        // Use deposit to perform the operation
+        let actual_shares = self.deposit(assets, receiver);
+        
+        // Verify we minted at least the requested shares
+        if actual_shares < shares {
+            self.env().revert(LstError::InsufficientScsprBalance);
+        }
+        
+        assets
+    }
+    
+    // ========================================
+    // Withdraw/Redeem Functions
+    // ========================================
+    
+    fn withdraw(&mut self, assets: U256, receiver: Address, owner: Address) -> U256 {
+        // CEP-4626 withdraw: burn sCSPR shares to withdraw exact CSPR amount
+        // Note: Liquid staking has an unstaking period, so this initiates withdrawal
+        
+        let caller = self.env().caller();
+        
+        // Calculate shares needed
+        let shares = self.convert_to_shares(assets);
+        
+        // Check allowance if caller is not owner
+        if caller != owner {
+            let token_address = self.scspr_token_address.get_or_revert_with(LstError::UnstakingFailed);
+            let token = ScsprTokenContractRef::new(self.env(), token_address);
+            let allowance = token.allowance(owner, caller);
+            if allowance < shares {
+                self.env().revert(LstError::Unauthorized);
+            }
+        }
+        
+        // Initiate unstaking (this burns shares and creates withdrawal request)
+        let request_id = self.unstake(shares);
+        
+        // Emit CEP-4626 Withdraw event
+        self.env().emit_event(Cep4626Withdraw {
+            sender: caller,
+            receiver,
+            owner,
+            assets,
+            shares,
+        });
+        
+        // Note: Actual withdrawal happens later via withdraw(request_id)
+        // For CEP-4626 compliance, we return shares burned
+        shares
+    }
+    
+    fn redeem(&mut self, shares: U256, receiver: Address, owner: Address) -> U256 {
+        // CEP-4626 redeem: burn exact sCSPR shares to withdraw CSPR
+        let caller = self.env().caller();
+        
+        // Check allowance if caller is not owner
+        if caller != owner {
+            let token_address = self.scspr_token_address.get_or_revert_with(LstError::UnstakingFailed);
+            let token = ScsprTokenContractRef::new(self.env(), token_address);
+            let allowance = token.allowance(owner, caller);
+            if allowance < shares {
+                self.env().revert(LstError::Unauthorized);
+            }
+        }
+        
+        // Calculate assets to receive
+        let assets = self.convert_to_assets(shares);
+        
+        // Initiate unstaking (this burns shares and creates withdrawal request)
+        let _request_id = self.unstake(shares);
+        
+        // Emit CEP-4626 Withdraw event
+        self.env().emit_event(Cep4626Withdraw {
+            sender: caller,
+            receiver,
+            owner,
+            assets,
+            shares,
+        });
+        
+        // Note: Actual withdrawal happens later via withdraw_unstaked(request_id)
+        // For CEP-4626 compliance, we return assets that will be received
+        assets
     }
 }

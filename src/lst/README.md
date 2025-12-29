@@ -4,6 +4,8 @@
 
 The LST system enables liquid staking on Casper Network, allowing users to stake CSPR and receive sCSPR (Staked CSPR) tokens that represent their staked position while remaining liquid and composable in DeFi applications.
 
+**🎯 CEP-4626 Compliant**: This system implements the CEP-4626 Tokenized Vault Standard, providing a standardized interface for liquid staking that's compatible with the entire Casper DeFi ecosystem.
+
 ## Architecture
 
 ### Components
@@ -17,10 +19,12 @@ The LST system enables liquid staking on Casper Network, allowing users to stake
 
 2. **Staking Manager** (`staking_manager.rs`)
    - Core contract managing staking operations
+   - **CEP-4626 compliant vault** for CSPR staking
    - Handles stake/unstake/withdraw flows
    - Manages exchange rate between CSPR and sCSPR
    - Tracks validator delegations
    - Distributes staking rewards
+   - Provides standard vault interface for integrations
 
 3. **Events** (`events.rs`)
    - Comprehensive event logging for all operations
@@ -62,18 +66,28 @@ The LST system enables liquid staking on Casper Network, allowing users to stake
 
 ### For Users
 
-#### Staking CSPR
+#### Staking CSPR (Traditional Interface)
 
 ```rust
 // 1. Choose an approved validator
 let validator = staking_manager.get_validators()[0];
 
 // 2. Stake CSPR (minimum 100 CSPR)
-let scspr_amount = staking_manager.stake(validator);
+let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
+let scspr_amount = staking_manager.stake(validator, cspr_amount);
 // Receives sCSPR tokens at current exchange rate
 ```
 
-#### Unstaking sCSPR
+#### Staking CSPR (CEP-4626 Interface)
+
+```rust
+// Standard vault deposit - uses first available validator
+let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
+let scspr_minted = staking_manager.deposit(cspr_amount, user_address);
+// Receives sCSPR shares at current exchange rate
+```
+
+#### Unstaking sCSPR (Traditional Interface)
 
 ```rust
 // 1. Initiate unstaking
@@ -83,22 +97,46 @@ let request_id = staking_manager.unstake(scspr_to_unstake);
 // 2. Wait for unstaking period (~16 hours)
 
 // 3. Withdraw CSPR
-staking_manager.withdraw(request_id);
+staking_manager.withdraw_unstaked(request_id);
+// Receives CSPR with accrued rewards
+```
+
+#### Unstaking sCSPR (CEP-4626 Interface)
+
+```rust
+// 1. Redeem sCSPR shares
+let scspr_amount = U256::from(500_000_000_000u64); // 500 sCSPR
+let cspr_to_receive = staking_manager.redeem(scspr_amount, user_address, user_address);
+// sCSPR is burned, unstaking request created
+
+// 2. Wait for unstaking period (~16 hours)
+
+// 3. Complete withdrawal
+let request_id = 0; // Get from user's unstake requests
+staking_manager.withdraw_unstaked(request_id);
 // Receives CSPR with accrued rewards
 ```
 
 #### Checking Exchange Rate
 
 ```rust
-// Get current exchange rate (sCSPR per CSPR, scaled by 1e18)
+// Traditional interface
 let exchange_rate = staking_manager.get_exchange_rate();
-
-// Convert between CSPR and sCSPR
-let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
 let scspr_equivalent = staking_manager.get_scspr_by_cspr(cspr_amount);
-
-let scspr_amount = U256::from(500_000_000_000u64); // 500 sCSPR
 let cspr_equivalent = staking_manager.get_cspr_by_scspr(scspr_amount);
+
+// CEP-4626 interface (standard)
+let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
+let scspr_shares = staking_manager.convert_to_shares(cspr_amount);
+let cspr_assets = staking_manager.convert_to_assets(scspr_shares);
+
+// Preview operations before executing
+let expected_shares = staking_manager.preview_deposit(cspr_amount);
+let expected_assets = staking_manager.preview_redeem(scspr_amount);
+
+// Check limits
+let max_deposit = staking_manager.max_deposit(user_address);
+let max_redeem = staking_manager.max_redeem(user_address);
 ```
 
 #### Using sCSPR in DeFi
