@@ -12,3 +12,6 @@ pub mod tokens;
 pub mod errors;
 pub mod events;
 pub mod math;
+
+// LST (Liquid Staking Token) modules
+pub mod lst;
