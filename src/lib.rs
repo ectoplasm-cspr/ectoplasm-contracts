@@ -21,3 +21,6 @@ pub mod lst;
 
 // Lending Protocol modules
 pub mod lending;
+
+// Yield Farming modules
+pub mod farming;
