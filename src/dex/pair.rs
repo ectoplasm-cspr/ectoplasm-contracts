@@ -14,7 +14,7 @@ use crate::math::MINIMUM_LIQUIDITY;
 use crate::token::{LpToken, Cep18TokenContractRef};
 
 /// Liquidity Pair contract
-#[odra::module]
+#[odra::module(factory=on)]
 pub struct Pair {
     /// LP token for this pair
     lp_token: SubModule<LpToken>,
@@ -42,7 +42,7 @@ pub struct Pair {
     locked: Var<bool>,
 }
 
-#[odra::module]
+#[odra::module(factory=on)]
 impl Pair {
     /// Initialize the pair with two token addresses
     pub fn init(

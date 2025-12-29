@@ -56,7 +56,7 @@ GAS_PRICE_TOLERANCE="${GAS_PRICE_TOLERANCE:-1}"
 TX_WAIT_TRIES="${TX_WAIT_TRIES:-180}"
 TX_WAIT_SLEEP_S="${TX_WAIT_SLEEP_S:-5}"
 PAYMENT_TOKEN="${PAYMENT_TOKEN:-600000000000}"
-PAYMENT_FACTORY="${PAYMENT_FACTORY:-500000000000}"
+PAYMENT_FACTORY="${PAYMENT_FACTORY:-1500000000000}"
 PAYMENT_ROUTER="${PAYMENT_ROUTER:-500000000000}"
 PAYMENT_CALL="${PAYMENT_CALL:-300000000000}"
 
@@ -188,14 +188,14 @@ wait_tx() {
 
     # execution_info appears once executed/finalized
     local has_exec
-    has_exec="$(echo "$json" | jq -r '.result.transaction.execution_info != null' 2>/dev/null || echo false)"
+    has_exec="$(echo "$json" | jq -r '.result.transaction.execution_info != null or .result.execution_info != null' 2>/dev/null || echo false)"
     if [[ "$has_exec" != "true" ]]; then
       sleep "$sleep_s"
       continue
     fi
 
     local err
-    err="$(echo "$json" | jq -r '.result.transaction.execution_info.error_message // empty' 2>/dev/null || true)"
+    err="$(echo "$json" | jq -r '.result.transaction.execution_info.error_message // .result.execution_info.error_message // empty' 2>/dev/null || true)"
     if [[ -n "$err" && "$err" != "null" ]]; then
       echo "Transaction failed: $tx" >&2
       echo "Error: $err" >&2
@@ -257,7 +257,35 @@ deploy_session_install() {
   echo "$tx"
 }
 
+deploy_pair_factory() {
+  log "==> Deploying PairFactory"
+
+  local out
+  out="$(casper_json put-transaction session \
+    --node-address "$NODE_ADDRESS" \
+    --chain-name "$CHAIN_NAME" \
+    --secret-key "$SECRET_KEY_PATH" \
+    --wasm-path "$wasm_dir/PairFactory.wasm" \
+    --payment-amount "$PAYMENT_FACTORY" \
+    --gas-price-tolerance "$GAS_PRICE_TOLERANCE" \
+    --standard-payment true \
+    --install-upgrade \
+    --session-arg "odra_cfg_package_hash_key_name:string:'pair_factory_package_hash'" \
+    --session-arg "odra_cfg_allow_key_override:bool:'true'" \
+    --session-arg "odra_cfg_is_upgradable:bool:'true'" \
+    --session-arg "odra_cfg_is_upgrade:bool:'false'" \
+  )"
+
+  local tx
+  tx="$(echo "$out" | extract_tx_hash)"
+  log "TX: $tx"
+  wait_tx "$tx"
+  echo "$tx"
+}
+
 deploy_factory() {
+  local pair_factory_contract_hash="$1" # hash-...
+
   log "==> Deploying Factory"
 
   local out
@@ -275,6 +303,7 @@ deploy_factory() {
     --session-arg "odra_cfg_is_upgradable:bool:'true'" \
     --session-arg "odra_cfg_is_upgrade:bool:'false'" \
     --session-arg "fee_to_setter:key:'$DEPLOYER_ACCOUNT_HASH'" \
+    --session-arg "pair_factory:key:'$pair_factory_contract_hash'" \
   )"
 
   local tx
@@ -384,7 +413,11 @@ WBTC_PKG="$(get_named_key wbtc_token_package_hash || true)"
 
 # Deploy DEX
 if [[ $SKIP_DEX -eq 0 ]]; then
-  deploy_factory
+  deploy_pair_factory
+  PAIR_FACTORY_PKG="$(get_named_key pair_factory_package_hash)"
+  PAIR_FACTORY_CONTRACT="$(active_contract_hash_from_package "$PAIR_FACTORY_PKG")"
+  
+  deploy_factory "$PAIR_FACTORY_CONTRACT"
   FACTORY_PKG="$(get_named_key factory_package_hash)"
   FACTORY_CONTRACT="$(active_contract_hash_from_package "$FACTORY_PKG")"
 

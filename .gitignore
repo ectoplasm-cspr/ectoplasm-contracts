@@ -19,3 +19,4 @@ secret_key*
 # Deployment artifacts
 deployment_info.json
 deployment_*.json
+/odra-release-2.5.0

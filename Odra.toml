@@ -12,6 +12,10 @@ fqn = "token::LpToken"
 [[contracts]]
 fqn = "dex::pair::Pair"
 
+# DEX Pair Factory contract
+[[contracts]]
+fqn = "dex::pair::PairFactory"
+
 # DEX Factory contract
 [[contracts]]
 fqn = "dex::factory::Factory"
