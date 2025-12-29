@@ -41,10 +41,20 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-# Load .env if present (no failure if absent)
+# Load .env if present (no failure if absent).
+# Do not override values already provided via the environment.
 if [[ -f .env ]]; then
-  # shellcheck disable=SC2046
-  export $(grep -v '^#' .env | grep -v '^$' | xargs || true)
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ "$line" != *"="* ]]; then
+      continue
+    fi
+    key="${line%%=*}"
+    value="${line#*=}"
+    if [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done < .env
 fi
 
 NODE_ADDRESS="${NODE_ADDRESS:-}"
@@ -98,7 +108,7 @@ is_valid_account_hash() {
 if [[ -z "$NODE_ADDRESS" || -z "$CHAIN_NAME" || -z "$SECRET_KEY_PATH" || -z "$DEPLOYER_ACCOUNT_HASH" ]]; then
   echo "Missing required env vars." >&2
   echo "Required: NODE_ADDRESS, CHAIN_NAME, SECRET_KEY_PATH, DEPLOYER_ACCOUNT_HASH" >&2
-  echo "Tip: copy scripts/.env.example (if you have one) to .env and fill it." >&2
+  echo "Tip: copy .env.example to .env and fill it." >&2
   exit 2
 fi
 
@@ -384,6 +394,14 @@ for f in Factory.wasm Router.wasm LpToken.wasm EctoToken.wasm UsdcToken.wasm Wet
   fi
 done
 
+if [[ $SKIP_DEX -eq 0 ]]; then
+  if [[ ! -f "$wasm_dir/PairFactory.wasm" ]]; then
+    echo "Missing wasm: $wasm_dir/PairFactory.wasm" >&2
+    echo "Run: cargo odra build" >&2
+    exit 2
+  fi
+fi
+
 preflight
 
 out_env="$repo_root/scripts/deploy-new.out.env"
@@ -403,6 +421,7 @@ if [[ $SKIP_TOKENS -eq 0 ]]; then
 fi
 
 # Resolve package hashes from named keys
+PAIR_FACTORY_PKG="$(get_named_key pair_factory_package_hash || true)"
 FACTORY_PKG="$(get_named_key factory_package_hash || true)"
 ROUTER_PKG="$(get_named_key router_package_hash || true)"
 WCSPR_PKG="$(get_named_key wcspr_token_package_hash || true)"
@@ -432,6 +451,7 @@ if [[ $SKIP_DEX -eq 0 ]]; then
 fi
 
 # Derive contract hashes (useful for reads)
+PAIR_FACTORY_CONTRACT="${PAIR_FACTORY_PKG:+$(active_contract_hash_from_package "$PAIR_FACTORY_PKG")}" || true
 FACTORY_CONTRACT="${FACTORY_PKG:+$(active_contract_hash_from_package "$FACTORY_PKG")}" || true
 ROUTER_CONTRACT="${ROUTER_PKG:+$(active_contract_hash_from_package "$ROUTER_PKG")}" || true
 WCSPR_CONTRACT="${WCSPR_PKG:+$(active_contract_hash_from_package "$WCSPR_PKG")}" || true
@@ -445,6 +465,7 @@ WBTC_CONTRACT="${WBTC_PKG:+$(active_contract_hash_from_package "$WBTC_PKG")}" ||
   echo "CHAIN_NAME=$CHAIN_NAME"
   echo "DEPLOYER_ACCOUNT_HASH=$DEPLOYER_ACCOUNT_HASH"
   echo
+  echo "PAIR_FACTORY_PACKAGE_HASH=$PAIR_FACTORY_PKG"
   echo "FACTORY_PACKAGE_HASH=$FACTORY_PKG"
   echo "ROUTER_PACKAGE_HASH=$ROUTER_PKG"
   echo "WCSPR_PACKAGE_HASH=$WCSPR_PKG"
@@ -453,6 +474,7 @@ WBTC_CONTRACT="${WBTC_PKG:+$(active_contract_hash_from_package "$WBTC_PKG")}" ||
   echo "WETH_PACKAGE_HASH=$WETH_PKG"
   echo "WBTC_PACKAGE_HASH=$WBTC_PKG"
   echo
+  echo "PAIR_FACTORY_CONTRACT_HASH=$PAIR_FACTORY_CONTRACT"
   echo "FACTORY_CONTRACT_HASH=$FACTORY_CONTRACT"
   echo "ROUTER_CONTRACT_HASH=$ROUTER_CONTRACT"
   echo "WCSPR_CONTRACT_HASH=$WCSPR_CONTRACT"
