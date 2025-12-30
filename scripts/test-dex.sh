@@ -203,19 +203,72 @@ swap_tokens() {
   local to="$DEPLOYER_ACCOUNT_HASH"
   local deadline="$(($(date +%s) * 1000 + 1200000))"
   
-  # Path: [WCSPR, ECTO]
-  # Odra/Casper expects Vec<Address> for path.
-  # We cannot easily pass complex types like Vec via CLI session args in raw casper-client easily 
-  # WITHOUT complex serialization.
+  # Path: [WCSPR, ECTO] - Using JSON args for Vec<Address>
+  # Format follows Casper CLType JSON serialization
+  # Note: U64 requires integer value, U256 can be string
+  local path_json="[
+    {\"name\": \"amount_in\", \"type\": \"U256\", \"value\": \"$amount_in\"},
+    {\"name\": \"amount_out_min\", \"type\": \"U256\", \"value\": \"$amount_out_min\"},
+    {\"name\": \"path\", \"type\": {\"List\": \"Key\"}, \"value\": [\"$WCSPR_CONTRACT_HASH\", \"$ECTO_CONTRACT_HASH\"]},
+    {\"name\": \"to\", \"type\": \"Key\", \"value\": \"$to\"},
+    {\"name\": \"deadline\", \"type\": \"U64\", \"value\": $deadline}
+  ]"
   
-  # HOWEVER, standard Odra entry points might expect CLType-appropriate serialization.
-  # For simple args, CLI works. For Vec<Address>, it is tricky via pure CLI flags unless utilizing encoded bytes.
+  local out
+  out="$(casper_json put-transaction package \
+    --node-address "$NODE_ADDRESS" \
+    --chain-name "$CHAIN_NAME" \
+    --secret-key "$SECRET_KEY_PATH" \
+    --payment-amount "$PAYMENT_CALL" \
+    --gas-price-tolerance "$GAS_PRICE_TOLERANCE" \
+    --standard-payment true \
+    --contract-package-hash "$ROUTER_PACKAGE_HASH" \
+    --session-entry-point "swap_exact_tokens_for_tokens" \
+    --session-args-json "$path_json" \
+  )"
   
-  # STRATEGY: We will skip SWAP validation in this bash script if it requires complex Vec serialization 
-  # unless we use a specialized tool or if Odra accepts a specific string format.
-  # Assuming simpler check for now: just verifying add_liquidity worked is a huge step.
+  local tx
+  tx="$(echo "$out" | extract_tx_hash)"
+  log "TX: $tx"
+  wait_tx "$tx"
+}
+
+# 4. Remove Liquidity
+remove_liquidity() {
+  log "==> Removing Liquidity (WCSPR-ECTO)"
   
-  log "WARNING: Skipping Swap via Bash due to CLI Vec<Key> serialization complexity. Implement via Rust client or JS SDK for robust testing."
+  # Parameters - remove half of the liquidity we added
+  local token_a="$WCSPR_CONTRACT_HASH"
+  local token_b="$ECTO_CONTRACT_HASH"
+  local liquidity="500000000"  # Half of what we added
+  local amount_a_min="0"  # Accept any for testing
+  local amount_b_min="0"  # Accept any for testing
+  local to="$DEPLOYER_ACCOUNT_HASH"
+  local deadline="$(($(date +%s) * 1000 + 1200000))"
+  
+  local out
+  out="$(casper_json put-transaction package \
+    --node-address "$NODE_ADDRESS" \
+    --chain-name "$CHAIN_NAME" \
+    --secret-key "$SECRET_KEY_PATH" \
+    --payment-amount "$PAYMENT_CALL" \
+    --gas-price-tolerance "$GAS_PRICE_TOLERANCE" \
+    --standard-payment true \
+    --contract-package-hash "$ROUTER_PACKAGE_HASH" \
+    --session-entry-point "remove_liquidity" \
+    --session-arg "token_a:key:'$token_a'" \
+    --session-arg "token_b:key:'$token_b'" \
+    --session-arg "liquidity:u256:'$liquidity'" \
+    --session-arg "amount_a_min:u256:'$amount_a_min'" \
+    --session-arg "amount_b_min:u256:'$amount_b_min'" \
+    --session-arg "to:key:'$to'" \
+    --session-arg "deadline:u64:'$deadline'" \
+  )"
+  
+  local tx
+  tx="$(echo "$out" | extract_tx_hash)"
+  log "TX: $tx"
+  wait_tx "$tx"
 }
 
 
@@ -241,7 +294,10 @@ approve_token "$ECTO_PACKAGE_HASH"  "$ROUTER_CONTRACT_HASH" "1000000000000" "ECT
 # C. Add Liquidity
 add_liquidity
 
-# C. Swap (Placeholder / To Be Implemented with proper serialization)
+# D. Swap tokens
 swap_tokens
 
-echo "Done."
+# E. Remove Liquidity
+remove_liquidity
+
+echo "Done. Full AMM lifecycle verified!"
