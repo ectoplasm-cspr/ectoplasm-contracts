@@ -395,7 +395,7 @@ impl LendingPool {
         
         // Check if position can be liquidated
         let collateral_mgr_address = self.collateral_manager.get_or_revert_with(LendingError::InvalidConfiguration);
-        let mut collateral_mgr = CollateralManagerContractRef::new(self.env(), collateral_mgr_address);
+        let collateral_mgr = CollateralManagerContractRef::new(self.env(), collateral_mgr_address);
         
         if !collateral_mgr.can_liquidate(borrower, total_debt) {
             self.env().revert(LendingError::PositionHealthy);

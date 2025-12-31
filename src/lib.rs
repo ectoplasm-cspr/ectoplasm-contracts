@@ -24,3 +24,6 @@ pub mod lending;
 
 // Yield Farming modules
 pub mod farming;
+
+// Incentive System modules
+pub mod incentives;

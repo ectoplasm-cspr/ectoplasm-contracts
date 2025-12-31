@@ -733,7 +733,7 @@ impl Cep4626Vault for StakingManager {
         }
         
         // Initiate unstaking (this burns shares and creates withdrawal request)
-        let request_id = self.unstake(shares);
+        let _request_id = self.unstake(shares);
         
         // Emit CEP-4626 Withdraw event
         self.env().emit_event(Cep4626Withdraw {
