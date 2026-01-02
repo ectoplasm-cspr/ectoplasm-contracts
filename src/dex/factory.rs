@@ -88,7 +88,9 @@ impl Factory {
         let pair_factory_addr = self.pair_factory.get_or_revert_with(DexError::ZeroAddress);
         let mut pair_factory = PairFactoryContractRef::new(self.env(), pair_factory_addr);
         
-        let (pair_address, _) = pair_factory.new_contract(
+        // Odra factory deploy returns (contract_package_hash, access_uref).
+        // We store the package hash as the Pair identifier.
+        let (pair_address, _pair_access_uref) = pair_factory.new_contract(
             String::from("Pair"),
             token0,
             token1,

@@ -91,6 +91,10 @@ ectoplasm-contracts/
 
 ## 🚀 Getting Started
 
+## ✅ On-chain verification (Casper v5)
+
+See `VERIFICATION_COMMANDS.md` for copy/paste commands to verify transactions (mint/approve/add_liquidity/swap/remove_liquidity) and to prove swap balance deltas from on-chain Transfer events.
+
 ### Prerequisites
 
 - Rust (nightly toolchain)
