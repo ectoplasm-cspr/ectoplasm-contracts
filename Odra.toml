@@ -39,3 +39,15 @@ fqn = "tokens::WethToken"
 # WBTC Token contract
 [[contracts]]
 fqn = "tokens::WbtcToken"
+
+# Launchpad Token Factory contract
+[[contracts]]
+fqn = "launchpad::token_factory::TokenFactory"
+
+# Launchpad Launch Token contract
+[[contracts]]
+fqn = "launchpad::launch_token::LaunchToken"
+
+# Launchpad Bonding Curve contract
+[[contracts]]
+fqn = "launchpad::bonding_curve::BondingCurve"

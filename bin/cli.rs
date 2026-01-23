@@ -4,6 +4,7 @@ use ectoplasm_contracts::dex::pair::PairFactory;
 use ectoplasm_contracts::dex::router::{Router, RouterInitArgs};
 use ectoplasm_contracts::token::LpToken;
 use ectoplasm_contracts::tokens::{EctoToken, UsdcToken, WethToken, WbtcToken};
+use ectoplasm_contracts::launchpad::token_factory::{TokenFactory, TokenFactoryInitArgs};
 use odra::prelude::{Address, Addressable};
 use odra::host::{HostEnv, Deployer};
 use odra::host::NoArgs;
@@ -123,6 +124,99 @@ impl DeployScript for DeployNewScript {
     }
 }
 
+/// Scenario to deploy Launchpad contracts (TokenFactory only for now)
+/// Does NOT redeploy DEX contracts - uses existing Router/Factory from environment
+/// Usage: cargo run --bin ectoplasm_contracts_cli -- scenarios deploy-launchpad
+pub struct DeployLaunchpadScenario;
+
+impl Scenario for DeployLaunchpadScenario {
+    fn args(&self) -> Vec<CommandArg> {
+        // No additional args needed - we read from environment
+        vec![]
+    }
+
+    fn run(
+        &self,
+        env: &HostEnv,
+        _container: &DeployedContractsContainer,
+        _args: Args
+    ) -> Result<(), Error> {
+        println!("==> Deploying Launchpad Contracts");
+        
+        // Get existing DEX addresses from environment
+        let router_hash = std::env::var("ROUTER_PACKAGE_HASH")
+            .or_else(|_| std::env::var("VITE_ROUTER_PACKAGE_HASH"))
+            .map_err(|_| Error::OdraError { message: "ROUTER_PACKAGE_HASH not set - run DEX deployment first".to_string() })?;
+        let factory_hash = std::env::var("FACTORY_PACKAGE_HASH")
+            .or_else(|_| std::env::var("VITE_FACTORY_PACKAGE_HASH"))
+            .map_err(|_| Error::OdraError { message: "FACTORY_PACKAGE_HASH not set - run DEX deployment first".to_string() })?;
+        
+        println!("Using existing DEX Router: {}", router_hash);
+        println!("Using existing DEX Factory: {}", factory_hash);
+        
+        // Parse addresses using PackageHash (Odra 2.5 naming)
+        use odra::casper_types::PackageHash;
+        
+        // Remove "hash-" prefix and parse
+        let router_hex = router_hash.replace("hash-", "");
+        let factory_hex = factory_hash.replace("hash-", "");
+        
+        let router_pkg = PackageHash::from_formatted_str(&format!("package-{}", router_hex))
+            .map_err(|e| Error::OdraError { message: format!("Failed to parse router package hash: {:?}", e) })?;
+        let factory_pkg = PackageHash::from_formatted_str(&format!("package-{}", factory_hex))
+            .map_err(|e| Error::OdraError { message: format!("Failed to parse factory package hash: {:?}", e) })?;
+        
+        let router_addr = Address::from(router_pkg);
+        let factory_addr = Address::from(factory_pkg);
+        
+        // Deploy TokenFactory using Deployer trait directly
+        println!("==> Deploying TokenFactory");
+        env.set_gas(800_000_000_000); // 800 CSPR
+        
+        let token_factory = TokenFactory::deploy(
+            env,
+            TokenFactoryInitArgs {
+                dex_router: router_addr,
+                dex_factory: factory_addr,
+            },
+        );
+        println!("TokenFactory deployed at: {:?}", token_factory.address());
+        
+        // Write the deployed address to env file
+        let node_address = std::env::var("ODRA_CASPER_LIVENET_NODE_ADDRESS")
+            .or_else(|_| std::env::var("NODE_ADDRESS"))
+            .unwrap_or_else(|_| "unknown".to_string());
+        
+        let mut file = File::create("scripts/deploy-launchpad.out.env")
+            .map_err(|e| Error::OdraError { message: format!("Failed to create env file: {:?}", e) })?;
+        
+        writeln!(file, "# Launchpad Deployment Output").unwrap();
+        writeln!(file, "").unwrap();
+        
+        let addr_str = token_factory.address().to_string();
+        let hex_part = addr_str
+            .replace("Contract(ContractPackageHash(", "")
+            .replace("))", "");
+        let formatted_pkg_hash = format!("hash-{}", hex_part);
+         
+        writeln!(file, "LAUNCHPAD_TOKEN_FACTORY_PACKAGE_HASH={}", formatted_pkg_hash).unwrap();
+         
+        let contract_hash = get_contract_hash(&node_address, &formatted_pkg_hash);
+        writeln!(file, "LAUNCHPAD_TOKEN_FACTORY_CONTRACT_HASH={}", contract_hash).unwrap();
+        
+        println!("==> Launchpad env file generated at scripts/deploy-launchpad.out.env");
+        println!("Add these to your frontend .env to enable launchpad features.");
+        
+        Ok(())
+    }
+}
+
+impl ScenarioMetadata for DeployLaunchpadScenario {
+    const NAME: &'static str = "deploy-launchpad";
+    const DESCRIPTION: &'static str = "Deploys the Launchpad TokenFactory contract (requires DEX to be deployed first)";
+}
+
+
 /// Scenario to create a new trading pair.
 pub struct CreatePairScenario;
 
@@ -163,6 +257,64 @@ impl Scenario for CreatePairScenario {
 impl ScenarioMetadata for CreatePairScenario {
     const NAME: &'static str = "create-pair";
     const DESCRIPTION: &'static str = "Creates a new trading pair for two tokens";
+}
+
+/// Scenario to create a new token launch.
+pub struct CreateLaunchScenario;
+
+impl Scenario for CreateLaunchScenario {
+    fn args(&self) -> Vec<CommandArg> {
+        vec![
+            CommandArg::new(
+                "name",
+                "Token name",
+                NamedCLType::String,
+            ),
+            CommandArg::new(
+                "symbol",
+                "Token symbol (max 6 chars)",
+                NamedCLType::String,
+            ),
+            CommandArg::new(
+                "curve_type",
+                "Curve type: 0=Linear, 1=Sigmoid, 2=Steep",
+                NamedCLType::U8,
+            ),
+        ]
+    }
+
+    fn run(
+        &self,
+        env: &HostEnv,
+        container: &DeployedContractsContainer,
+        args: Args
+    ) -> Result<(), Error> {
+        let mut token_factory = container.contract_ref::<TokenFactory>(env)?;
+        let name = args.get_single::<String>("name")?;
+        let symbol = args.get_single::<String>("symbol")?;
+        let curve_type = args.get_single::<u8>("curve_type")?;
+
+        env.set_gas(100_000_000_000); // 100 CSPR
+        let launch_id = token_factory.create_launch(
+            name.clone(),
+            symbol.clone(),
+            curve_type,
+            None,
+            None,
+            None,
+        );
+        
+        println!("Launch created successfully!");
+        println!("Launch ID: {}", launch_id);
+        println!("Token: {}", name);
+        println!("Symbol: {}", symbol);
+        Ok(())
+    }
+}
+
+impl ScenarioMetadata for CreateLaunchScenario {
+    const NAME: &'static str = "create-launch";
+    const DESCRIPTION: &'static str = "Creates a new token launch on the launchpad";
 }
 
 fn generate_env_file(container: &DeployedContractsContainer) {
@@ -211,6 +363,8 @@ fn generate_env_file(container: &DeployedContractsContainer) {
     }
 }
 
+
+
 fn get_contract_hash(node_address: &str, package_hash: &str) -> String {
     let output = Command::new("casper-client")
         .arg("query-global-state")
@@ -239,12 +393,13 @@ fn get_contract_hash(node_address: &str, package_hash: &str) -> String {
         Err(_) => String::from("ERROR_CALLING_CLIENT")
     }
 }
+
 pub fn main() {
     OdraCli::new()
-        .about("CLI tool for Casper DEX smart contracts")
-        // Deploy scripts
+        .about("CLI tool for Casper DEX and Launchpad smart contracts")
+        // Deploy script (only one allowed by Odra)
         .deploy(DeployNewScript)
-        // Contract references
+        // DEX Contract references
         .contract::<Factory>()
         .contract::<PairFactory>()
         .contract::<Router>()
@@ -253,8 +408,13 @@ pub fn main() {
         .contract::<UsdcToken>()
         .contract::<WethToken>()
         .contract::<WbtcToken>()
-        // Scenarios
+        // Launchpad Contract references
+        .contract::<TokenFactory>()
+        // Scenarios (use scenarios for additional deployments)
         .scenario(CreatePairScenario)
+        .scenario(CreateLaunchScenario)
+        .scenario(DeployLaunchpadScenario)
         .build()
         .run();
 }
+
