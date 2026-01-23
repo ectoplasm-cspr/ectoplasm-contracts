@@ -1,0 +1,41 @@
+last_updated = "2026-01-04T09:32:56Z"
+
+[[contracts]]
+name = "LpToken"
+package_name = "LpToken"
+package_hash = "hash-6adfa0f394cce4526c851136dc514d2d616102373a6e05abaaae1fd0f54a2c1b"
+
+[[contracts]]
+name = "EctoToken"
+package_name = "EctoToken"
+package_hash = "hash-2e52f8fe9ca9d7035ce8c2f84ab0780231226be612766448b878352ca4cd8903"
+
+[[contracts]]
+name = "UsdcToken"
+package_name = "UsdcToken"
+package_hash = "hash-012891771aba35317f480cf52082411c18c5012e0436a96cb5ae1189207a15ab"
+
+[[contracts]]
+name = "WethToken"
+package_name = "WethToken"
+package_hash = "hash-39296df7ae4dc7a0d6f22ffceab89b5b93c97ea8cc92fe3967f49dce5c46199f"
+
+[[contracts]]
+name = "WbtcToken"
+package_name = "WbtcToken"
+package_hash = "hash-9ba451f07dd396d95fb28974b440b527f4ed20acbbeebd83c5710d5e2dff8717"
+
+[[contracts]]
+name = "PairFactory"
+package_name = "PairFactory"
+package_hash = "hash-a6d046e39a99274fa56d42309bd6034ce5049ae4c50a8571569f6222c31d9a13"
+
+[[contracts]]
+name = "Factory"
+package_name = "Factory"
+package_hash = "hash-6019d0a47b3a3407ad1aa19b6586bd098c21c9a8c0d308790a1da6630c0836be"
+
+[[contracts]]
+name = "Router"
+package_name = "Router"
+package_hash = "hash-446c0c4bf16e3876d2061f726a39c56a07d652791d711514197233811d48d017"

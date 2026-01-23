@@ -19,11 +19,11 @@ Optional:
   GAS_PRICE_TOLERANCE     Default: 1
   TX_WAIT_TRIES           Default: 180
   TX_WAIT_SLEEP_S         Default: 5
-  PAYMENT_TOKEN           Default: 600000000000
-  PAYMENT_FACTORY         Default: 1500000000000
-  PAYMENT_ROUTER          Default: 500000000000
-  PAYMENT_CALL            Default: 300000000000
-  PAYMENT_CREATE_PAIR     Default: 900000000000
+  PAYMENT_TOKEN           Default: 750000000000
+  PAYMENT_FACTORY         Default: 750000000000
+  PAYMENT_ROUTER          Default: 750000000000
+  PAYMENT_CALL            Default: 750000000000
+  PAYMENT_CREATE_PAIR     Default: 750000000000
 
 What it does:
   - Deploys: WCSPR(LpToken), ECTO, USDC, WETH, WBTC, Factory, Router
@@ -135,7 +135,7 @@ log() { printf '%s\n' "$*"; }
 casper_json() {
   # casper-client may emit non-JSON lines; keep only the JSON payload (from first '{' or '[').
   # This makes jq parsing resilient across client versions/environments.
-  casper-client "$@" | sed -n '/^[[:space:]]*[{[]/,$p'
+  casper-client "$@" 2>&1 | sed -n '/^[[:space:]]*[{[]/,$p'
 }
 
 extract_tx_hash() {
@@ -490,6 +490,7 @@ if [[ $SKIP_DEX -eq 0 ]]; then
   WCSPR_CONTRACT="$(active_contract_hash_from_package "$WCSPR_PKG")"
 
   # Pass Factory + WCSPR *package* hashes for contract-to-contract calls.
+  # Odra will automatically call Router.init with these session args during WASM deployment.
   deploy_router "$FACTORY_PKG" "$WCSPR_PKG"
 
   ROUTER_PKG="$(get_named_key router_package_hash)"

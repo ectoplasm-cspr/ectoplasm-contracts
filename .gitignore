@@ -25,3 +25,5 @@ scripts/.deploy-new.out.env.tmp
 # scripts/deploy-new.out.env
 /odra-state-reader-ts
 /casper-js-sdk-dev
+/ectoplasm-react
+/frontend-react

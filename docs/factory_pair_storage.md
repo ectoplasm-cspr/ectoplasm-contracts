@@ -212,3 +212,16 @@ casper-client get-dictionary-item \
   --seed-uref "$EVENTS_UREF" \
   --dictionary-item-key "0"
 ```
+
+
+
+pub struct Factory {
+    fee_to: Var<Option<Address>>,        // Index 0-1 (Option takes 2 indices!)
+    fee_to_setter: Var<Address>,         // Index 2
+    pair_factory: Var<Address>,          // Index 3
+    pairs: Mapping<...>,                 // Index 4
+    all_pairs: Mapping<u32, Address>,    // Index 5 ✅
+    all_pairs_length: Var<u32>,          // Index 6 ✅
+}
+
+Key Discovery: Var<Option<T>> takes 2 storage indices instead of 1!
