@@ -11,8 +11,6 @@ pub struct Staked {
     pub cspr_amount: U256,
     /// Amount of sCSPR minted
     pub scspr_amount: U256,
-    /// Validator address where CSPR was delegated
-    pub validator: Address,
     /// Exchange rate at time of staking (sCSPR per CSPR, scaled by 1e18)
     pub exchange_rate: U256,
     /// Timestamp of the stake

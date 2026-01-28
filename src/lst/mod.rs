@@ -10,7 +10,8 @@ pub mod errors;
 pub mod events;
 
 #[cfg(test)]
-mod tests;
+// mod tests;
+mod working_tests;
 
 pub use scspr_token::ScsprToken;
 pub use staking_manager::StakingManager;

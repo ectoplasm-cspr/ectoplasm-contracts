@@ -88,13 +88,12 @@ impl StakingManager {
         // Set initial values
         self.total_cspr_staked.set(U256::zero());
         self.total_scspr_supply.set(U256::zero());
-        self.minimum_stake.set(U256::from(100_000_000_000u64)); // 100 CSPR minimum (9 decimals)
+        self.minimum_stake.set(U256::from(1_000_000_000u64)); // 1 CSPR minimum (9 decimals)
         self.unstaking_period.set(57_600); // ~16 hours (7 eras)
         self.next_unstake_request_id.set(0);
         self.admin.set(caller);
         self.paused.set(false);
         self.exchange_rate_scale.set(U256::from(1_000_000_000_000_000_000u128)); // 1e18
-        self.validator_count.set(0);
     }
 
     /// Stake CSPR and receive sCSPR
@@ -105,7 +104,7 @@ impl StakingManager {
     /// 
     /// # Returns
     /// The amount of sCSPR minted
-    pub fn stake(&mut self, validator: Address, cspr_amount: U256) -> U256 {
+    pub fn stake(&mut self, cspr_amount: U256) -> U256 {
         self.ensure_not_paused();
         
         let caller = self.env().caller();
@@ -120,11 +119,6 @@ impl StakingManager {
             self.env().revert(LstError::BelowMinimumStake);
         }
         
-        // Validate validator
-        if !self.validators.get(&validator).unwrap_or(false) {
-            self.env().revert(LstError::InvalidValidator);
-        }
-        
         // Calculate sCSPR amount based on current exchange rate
         let scspr_amount = self.calculate_scspr_amount(cspr_amount);
         
@@ -135,10 +129,6 @@ impl StakingManager {
         // Update total sCSPR supply
         let current_supply = self.total_scspr_supply.get_or_default();
         self.total_scspr_supply.set(current_supply + scspr_amount);
-        
-        // Update validator stake
-        let validator_stake = self.validator_stakes.get(&validator).unwrap_or_default();
-        self.validator_stakes.set(&validator, validator_stake + cspr_amount);
         
         // Mint sCSPR to the user
         let token_address = self.scspr_token_address.get_or_revert_with(LstError::StakingFailed);
@@ -155,7 +145,6 @@ impl StakingManager {
             staker: caller,
             cspr_amount,
             scspr_amount,
-            validator,
             exchange_rate,
             timestamp,
         });
@@ -664,16 +653,8 @@ impl Cep4626Vault for StakingManager {
     
     fn deposit(&mut self, assets: U256, receiver: Address) -> U256 {
         // CEP-4626 deposit: stake CSPR and mint sCSPR to receiver
-        // Note: For liquid staking, we need a validator parameter
-        // We'll use the first available validator
-        let validators = self.get_validators();
-        if validators.is_empty() {
-            self.env().revert(LstError::InvalidValidator);
-        }
-        let validator = validators[0];
-        
         // Perform the stake operation
-        let shares = self.stake(validator, assets);
+        let shares = self.stake(assets);
         
         // If receiver is different from caller, transfer shares
         let caller = self.env().caller();

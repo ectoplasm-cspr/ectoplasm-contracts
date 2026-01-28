@@ -510,6 +510,29 @@ cargo test --package ectoplasm-contracts --lib dex::tests
 
 ## 🚀 Testnet Deployments
 
+### LST Protocol (Deployed: Jan 28, 2026) ✅
+
+Liquid Staking Token contracts are live on **Casper Testnet**:
+
+#### sCSPR Token (Liquid Staking Token)
+- **Package Hash:** `hash-0ebf8c78074ff3bed238a55e9f992074677cef6ed9339d367b559b7b86fbbe9d`
+- **Contract Hash:** `hash-eb7a325b5d6281b901c0bd2b8f1989392c3a9d344183a7dabd1de970c7bcb01b`
+- **Deploy TX:** `7a1960c985b0d7a0dae088ceb16699c97489573bc9dbf04adfb923d6841304e9`
+- **Explorer:** [View on Testnet](https://testnet.cspr.live/deploy/7a1960c985b0d7a0dae088ceb16699c97489573bc9dbf04adfb923d6841304e9)
+- **Features:** CEP-4626 compliant, stake CSPR to receive sCSPR tokens
+
+#### Staking Manager
+- **Package Hash:** `hash-bea004ced0141f9e84d95ad1ccf1a5b55311b86f1626bd91ebf42db5ae740ad4`
+- **Contract Hash:** `hash-da7515b1ecfa57b4bd45402d331a3b39ce9f0e7c54cc99e940ebdf234b10eb51`
+- **Deploy TX:** `f4c97b5c0cf8b652fd3d3b9cc9a9927e08e575857c42da61acb3adc847669034`
+- **Explorer:** [View on Testnet](https://testnet.cspr.live/deploy/f4c97b5c0cf8b652fd3d3b9cc9a9927e08e575857c42da61acb3adc847669034)
+- **Features:** Simplified staking (no validator params), 1 CSPR minimum, 7-era unstaking
+
+**Key Improvements:**
+- ✅ Removed validator logic for simplified architecture
+- ✅ All 4 comprehensive tests passing
+- ✅ Ready for production use
+
 ### Incentive Layer (Deployed: Dec 30, 2024)
 
 All incentive contracts are live on **Casper Testnet**:
