@@ -12,3 +12,18 @@ pub mod tokens;
 pub mod errors;
 pub mod events;
 pub mod math;
+
+// CEP-4626: Tokenized Vault Standard
+pub mod cep4626;
+
+// LST (Liquid Staking Token) modules
+pub mod lst;
+
+// Lending Protocol modules
+pub mod lending;
+
+// Yield Farming modules
+pub mod farming;
+
+// Incentive System modules
+pub mod incentives;

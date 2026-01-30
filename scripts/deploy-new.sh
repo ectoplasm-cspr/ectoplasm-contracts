@@ -20,9 +20,10 @@ Optional:
   TX_WAIT_TRIES           Default: 180
   TX_WAIT_SLEEP_S         Default: 5
   PAYMENT_TOKEN           Default: 600000000000
-  PAYMENT_FACTORY         Default: 500000000000
+  PAYMENT_FACTORY         Default: 1500000000000
   PAYMENT_ROUTER          Default: 500000000000
   PAYMENT_CALL            Default: 300000000000
+  PAYMENT_CREATE_PAIR     Default: 900000000000
 
 What it does:
   - Deploys: WCSPR(LpToken), ECTO, USDC, WETH, WBTC, Factory, Router
@@ -41,10 +42,20 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-# Load .env if present (no failure if absent)
+# Load .env if present (no failure if absent).
+# Do not override values already provided via the environment.
 if [[ -f .env ]]; then
-  # shellcheck disable=SC2046
-  export $(grep -v '^#' .env | grep -v '^$' | xargs || true)
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ "$line" != *"="* ]]; then
+      continue
+    fi
+    key="${line%%=*}"
+    value="${line#*=}"
+    if [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done < .env
 fi
 
 NODE_ADDRESS="${NODE_ADDRESS:-}"
@@ -56,9 +67,10 @@ GAS_PRICE_TOLERANCE="${GAS_PRICE_TOLERANCE:-1}"
 TX_WAIT_TRIES="${TX_WAIT_TRIES:-180}"
 TX_WAIT_SLEEP_S="${TX_WAIT_SLEEP_S:-5}"
 PAYMENT_TOKEN="${PAYMENT_TOKEN:-600000000000}"
-PAYMENT_FACTORY="${PAYMENT_FACTORY:-500000000000}"
+PAYMENT_FACTORY="${PAYMENT_FACTORY:-1500000000000}"
 PAYMENT_ROUTER="${PAYMENT_ROUTER:-500000000000}"
 PAYMENT_CALL="${PAYMENT_CALL:-300000000000}"
+PAYMENT_CREATE_PAIR="${PAYMENT_CREATE_PAIR:-900000000000}"
 
 BUILD=0
 SKIP_TOKENS=0
@@ -98,7 +110,7 @@ is_valid_account_hash() {
 if [[ -z "$NODE_ADDRESS" || -z "$CHAIN_NAME" || -z "$SECRET_KEY_PATH" || -z "$DEPLOYER_ACCOUNT_HASH" ]]; then
   echo "Missing required env vars." >&2
   echo "Required: NODE_ADDRESS, CHAIN_NAME, SECRET_KEY_PATH, DEPLOYER_ACCOUNT_HASH" >&2
-  echo "Tip: copy scripts/.env.example (if you have one) to .env and fill it." >&2
+  echo "Tip: copy .env.example to .env and fill it." >&2
   exit 2
 fi
 
@@ -188,14 +200,22 @@ wait_tx() {
 
     # execution_info appears once executed/finalized
     local has_exec
-    has_exec="$(echo "$json" | jq -r '.result.transaction.execution_info != null' 2>/dev/null || echo false)"
+    has_exec="$(echo "$json" | jq -r '.result.transaction.execution_info != null or .result.execution_info != null' 2>/dev/null || echo false)"
     if [[ "$has_exec" != "true" ]]; then
       sleep "$sleep_s"
       continue
     fi
 
     local err
-    err="$(echo "$json" | jq -r '.result.transaction.execution_info.error_message // empty' 2>/dev/null || true)"
+    err="$(echo "$json" | jq -r '
+      .result.transaction.execution_info.execution_result.Version2.error_message
+      // .result.transaction.execution_info.execution_result.Version1.error_message
+      // .result.execution_info.execution_result.Version2.error_message
+      // .result.execution_info.execution_result.Version1.error_message
+      // .result.transaction.execution_info.error_message
+      // .result.execution_info.error_message
+      // empty
+    ' 2>/dev/null || true)"
     if [[ -n "$err" && "$err" != "null" ]]; then
       echo "Transaction failed: $tx" >&2
       echo "Error: $err" >&2
@@ -224,6 +244,34 @@ preflight() {
     exit 2
   fi
 }
+
+call_init() {
+  local package_hash="$1"
+  local entry_point="init"
+  shift 2
+  local args=("$@")
+
+  log "==> Calling $entry_point on $package_hash"
+
+  local out
+  out="$(casper_json put-transaction package \
+    --node-address "$NODE_ADDRESS" \
+    --chain-name "$CHAIN_NAME" \
+    --secret-key "$SECRET_KEY_PATH" \
+    --contract-package-hash "$package_hash" \
+    --session-entry-point "$entry_point" \
+    --payment-amount "$PAYMENT_CALL" \
+    --gas-price-tolerance "$GAS_PRICE_TOLERANCE" \
+    --standard-payment true \
+    "${args[@]}" \
+  )"
+
+  local tx
+  tx="$(echo "$out" | extract_tx_hash)"
+  log "TX: $tx"
+  wait_tx "$tx"
+}
+
 
 deploy_session_install() {
   local label="$1"
@@ -257,7 +305,35 @@ deploy_session_install() {
   echo "$tx"
 }
 
+deploy_pair_factory() {
+  log "==> Deploying PairFactory"
+
+  local out
+  out="$(casper_json put-transaction session \
+    --node-address "$NODE_ADDRESS" \
+    --chain-name "$CHAIN_NAME" \
+    --secret-key "$SECRET_KEY_PATH" \
+    --wasm-path "$wasm_dir/PairFactory.wasm" \
+    --payment-amount "$PAYMENT_FACTORY" \
+    --gas-price-tolerance "$GAS_PRICE_TOLERANCE" \
+    --standard-payment true \
+    --install-upgrade \
+    --session-arg "odra_cfg_package_hash_key_name:string:'pair_factory_package_hash'" \
+    --session-arg "odra_cfg_allow_key_override:bool:'true'" \
+    --session-arg "odra_cfg_is_upgradable:bool:'true'" \
+    --session-arg "odra_cfg_is_upgrade:bool:'false'" \
+  )"
+
+  local tx
+  tx="$(echo "$out" | extract_tx_hash)"
+  log "TX: $tx"
+  wait_tx "$tx"
+  echo "$tx"
+}
+
 deploy_factory() {
+  local pair_factory_pkg_hash="$1" # hash-... (PairFactory package hash)
+
   log "==> Deploying Factory"
 
   local out
@@ -275,6 +351,7 @@ deploy_factory() {
     --session-arg "odra_cfg_is_upgradable:bool:'true'" \
     --session-arg "odra_cfg_is_upgrade:bool:'false'" \
     --session-arg "fee_to_setter:key:'$DEPLOYER_ACCOUNT_HASH'" \
+    --session-arg "pair_factory:key:'$pair_factory_pkg_hash'" \
   )"
 
   local tx
@@ -285,8 +362,8 @@ deploy_factory() {
 }
 
 deploy_router() {
-  local factory_contract_hash="$1" # hash-...
-  local wcspr_contract_hash="$2"   # hash-...
+  local factory_pkg_hash="$1" # hash-... (Factory package hash)
+  local wcspr_pkg_hash="$2"   # hash-... (WCSPR package hash)
 
   log "==> Deploying Router"
 
@@ -304,8 +381,8 @@ deploy_router() {
     --session-arg "odra_cfg_allow_key_override:bool:'true'" \
     --session-arg "odra_cfg_is_upgradable:bool:'true'" \
     --session-arg "odra_cfg_is_upgrade:bool:'false'" \
-    --session-arg "factory:key:'$factory_contract_hash'" \
-    --session-arg "wcspr:key:'$wcspr_contract_hash'" \
+    --session-arg "factory:key:'$factory_pkg_hash'" \
+    --session-arg "wcspr:key:'$wcspr_pkg_hash'" \
   )"
 
   local tx
@@ -317,17 +394,17 @@ deploy_router() {
 
 call_factory_create_pair() {
   local factory_pkg="$1" # hash-...
-  local token_a="$2"     # hash-... (contract hash)
-  local token_b="$3"     # hash-... (contract hash)
+  local token_a="$2"     # hash-... (token package hash)
+  local token_b="$3"     # hash-... (token package hash)
 
-  log "==> Factory.create_pair($token_a, $token_b)"
+  echo "==> Factory.create_pair($token_a, $token_b)" >&2
 
   local out
   out="$(casper_json put-transaction package \
     --node-address "$NODE_ADDRESS" \
     --chain-name "$CHAIN_NAME" \
     --secret-key "$SECRET_KEY_PATH" \
-    --payment-amount "$PAYMENT_CALL" \
+    --payment-amount "$PAYMENT_CREATE_PAIR" \
     --gas-price-tolerance "$GAS_PRICE_TOLERANCE" \
     --standard-payment true \
     --contract-package-hash "$factory_pkg" \
@@ -338,8 +415,11 @@ call_factory_create_pair() {
 
   local tx
   tx="$(echo "$out" | extract_tx_hash)"
-  log "TX: $tx"
+  echo "TX: $tx" >&2
   wait_tx "$tx"
+
+  # Emit tx hash on stdout so callers can capture it.
+  echo "$tx"
 }
 
 if [[ $BUILD -eq 1 ]]; then
@@ -354,6 +434,14 @@ for f in Factory.wasm Router.wasm LpToken.wasm EctoToken.wasm UsdcToken.wasm Wet
     exit 2
   fi
 done
+
+if [[ $SKIP_DEX -eq 0 ]]; then
+  if [[ ! -f "$wasm_dir/PairFactory.wasm" ]]; then
+    echo "Missing wasm: $wasm_dir/PairFactory.wasm" >&2
+    echo "Run: cargo odra build" >&2
+    exit 2
+  fi
+fi
 
 preflight
 
@@ -374,6 +462,7 @@ if [[ $SKIP_TOKENS -eq 0 ]]; then
 fi
 
 # Resolve package hashes from named keys
+PAIR_FACTORY_PKG="$(get_named_key pair_factory_package_hash || true)"
 FACTORY_PKG="$(get_named_key factory_package_hash || true)"
 ROUTER_PKG="$(get_named_key router_package_hash || true)"
 WCSPR_PKG="$(get_named_key wcspr_token_package_hash || true)"
@@ -384,8 +473,14 @@ WBTC_PKG="$(get_named_key wbtc_token_package_hash || true)"
 
 # Deploy DEX
 if [[ $SKIP_DEX -eq 0 ]]; then
-  deploy_factory
+  deploy_pair_factory
+  PAIR_FACTORY_PKG="$(get_named_key pair_factory_package_hash)"
+  PAIR_FACTORY_CONTRACT="$(active_contract_hash_from_package "$PAIR_FACTORY_PKG")"
+  
+  # Pass PairFactory *package* hash for contract-to-contract calls.
+  deploy_factory "$PAIR_FACTORY_PKG"
   FACTORY_PKG="$(get_named_key factory_package_hash)"
+
   FACTORY_CONTRACT="$(active_contract_hash_from_package "$FACTORY_PKG")"
 
   # Ensure WCSPR exists (either deployed above or already present)
@@ -394,11 +489,14 @@ if [[ $SKIP_DEX -eq 0 ]]; then
   fi
   WCSPR_CONTRACT="$(active_contract_hash_from_package "$WCSPR_PKG")"
 
-  deploy_router "$FACTORY_CONTRACT" "$WCSPR_CONTRACT"
+  # Pass Factory + WCSPR *package* hashes for contract-to-contract calls.
+  deploy_router "$FACTORY_PKG" "$WCSPR_PKG"
+
   ROUTER_PKG="$(get_named_key router_package_hash)"
 fi
 
 # Derive contract hashes (useful for reads)
+PAIR_FACTORY_CONTRACT="${PAIR_FACTORY_PKG:+$(active_contract_hash_from_package "$PAIR_FACTORY_PKG")}" || true
 FACTORY_CONTRACT="${FACTORY_PKG:+$(active_contract_hash_from_package "$FACTORY_PKG")}" || true
 ROUTER_CONTRACT="${ROUTER_PKG:+$(active_contract_hash_from_package "$ROUTER_PKG")}" || true
 WCSPR_CONTRACT="${WCSPR_PKG:+$(active_contract_hash_from_package "$WCSPR_PKG")}" || true
@@ -412,6 +510,7 @@ WBTC_CONTRACT="${WBTC_PKG:+$(active_contract_hash_from_package "$WBTC_PKG")}" ||
   echo "CHAIN_NAME=$CHAIN_NAME"
   echo "DEPLOYER_ACCOUNT_HASH=$DEPLOYER_ACCOUNT_HASH"
   echo
+  echo "PAIR_FACTORY_PACKAGE_HASH=$PAIR_FACTORY_PKG"
   echo "FACTORY_PACKAGE_HASH=$FACTORY_PKG"
   echo "ROUTER_PACKAGE_HASH=$ROUTER_PKG"
   echo "WCSPR_PACKAGE_HASH=$WCSPR_PKG"
@@ -420,6 +519,7 @@ WBTC_CONTRACT="${WBTC_PKG:+$(active_contract_hash_from_package "$WBTC_PKG")}" ||
   echo "WETH_PACKAGE_HASH=$WETH_PKG"
   echo "WBTC_PACKAGE_HASH=$WBTC_PKG"
   echo
+  echo "PAIR_FACTORY_CONTRACT_HASH=$PAIR_FACTORY_CONTRACT"
   echo "FACTORY_CONTRACT_HASH=$FACTORY_CONTRACT"
   echo "ROUTER_CONTRACT_HASH=$ROUTER_CONTRACT"
   echo "WCSPR_CONTRACT_HASH=$WCSPR_CONTRACT"
@@ -438,14 +538,27 @@ if [[ $CREATE_PAIRS -eq 1 ]]; then
     exit 1
   fi
 
-  # Create common pairs (using contract hashes as token addresses)
-  call_factory_create_pair "$FACTORY_PKG" "$WCSPR_CONTRACT" "$USDC_CONTRACT"
-  call_factory_create_pair "$FACTORY_PKG" "$WCSPR_CONTRACT" "$ECTO_CONTRACT"
-  call_factory_create_pair "$FACTORY_PKG" "$WCSPR_CONTRACT" "$WETH_CONTRACT"
-  call_factory_create_pair "$FACTORY_PKG" "$WCSPR_CONTRACT" "$WBTC_CONTRACT"
-  call_factory_create_pair "$FACTORY_PKG" "$USDC_CONTRACT" "$ECTO_CONTRACT"
-  call_factory_create_pair "$FACTORY_PKG" "$USDC_CONTRACT" "$WETH_CONTRACT"
-  call_factory_create_pair "$FACTORY_PKG" "$USDC_CONTRACT" "$WBTC_CONTRACT"
+  # Create common pairs (using *package* hashes as token addresses).
+  PAIR_TX_WCSPR_USDC="$(call_factory_create_pair "$FACTORY_PKG" "$WCSPR_PKG" "$USDC_PKG")"
+  echo "PAIR_TX_WCSPR_USDC=$PAIR_TX_WCSPR_USDC" >> "$out_env"
+
+  PAIR_TX_WCSPR_ECTO="$(call_factory_create_pair "$FACTORY_PKG" "$WCSPR_PKG" "$ECTO_PKG")"
+  echo "PAIR_TX_WCSPR_ECTO=$PAIR_TX_WCSPR_ECTO" >> "$out_env"
+
+  PAIR_TX_WCSPR_WETH="$(call_factory_create_pair "$FACTORY_PKG" "$WCSPR_PKG" "$WETH_PKG")"
+  echo "PAIR_TX_WCSPR_WETH=$PAIR_TX_WCSPR_WETH" >> "$out_env"
+
+  PAIR_TX_WCSPR_WBTC="$(call_factory_create_pair "$FACTORY_PKG" "$WCSPR_PKG" "$WBTC_PKG")"
+  echo "PAIR_TX_WCSPR_WBTC=$PAIR_TX_WCSPR_WBTC" >> "$out_env"
+
+  PAIR_TX_USDC_ECTO="$(call_factory_create_pair "$FACTORY_PKG" "$USDC_PKG" "$ECTO_PKG")"
+  echo "PAIR_TX_USDC_ECTO=$PAIR_TX_USDC_ECTO" >> "$out_env"
+
+  PAIR_TX_USDC_WETH="$(call_factory_create_pair "$FACTORY_PKG" "$USDC_PKG" "$WETH_PKG")"
+  echo "PAIR_TX_USDC_WETH=$PAIR_TX_USDC_WETH" >> "$out_env"
+
+  PAIR_TX_USDC_WBTC="$(call_factory_create_pair "$FACTORY_PKG" "$USDC_PKG" "$WBTC_PKG")"
+  echo "PAIR_TX_USDC_WBTC=$PAIR_TX_USDC_WBTC" >> "$out_env"
 fi
 
 log "Done."

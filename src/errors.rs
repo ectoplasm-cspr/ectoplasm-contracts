@@ -70,6 +70,9 @@ pub enum DexError {
     
     /// Invalid fee
     InvalidFee = 22,
+    
+    /// Invalid configuration
+    InvalidConfiguration = 23,
 }
 
 /// Custom errors for the LP Token contract

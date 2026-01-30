@@ -12,6 +12,10 @@ fqn = "token::LpToken"
 [[contracts]]
 fqn = "dex::pair::Pair"
 
+# DEX Pair Factory contract
+[[contracts]]
+fqn = "dex::pair::PairFactory"
+
 # DEX Factory contract
 [[contracts]]
 fqn = "dex::factory::Factory"
@@ -35,3 +39,39 @@ fqn = "tokens::WethToken"
 # WBTC Token contract
 [[contracts]]
 fqn = "tokens::WbtcToken"
+
+# LST (Liquid Staking Token) Contracts
+[[contracts]]
+fqn = "lst::staking_manager::StakingManager"
+
+[[contracts]]
+fqn = "lst::scspr_token::ScsprToken"
+
+# Lending Protocol Contracts
+[[contracts]]
+fqn = "lending::lending_pool::LendingPool"
+
+[[contracts]]
+fqn = "lending::aecto_vault::AectoVault"
+
+[[contracts]]
+fqn = "lending::collateral_manager::CollateralManager"
+
+[[contracts]]
+fqn = "lending::interest_rate::InterestRateStrategy"
+
+[[contracts]]
+fqn = "lending::liquidation::LiquidationEngine"
+
+[[contracts]]
+fqn = "lending::price_oracle::PriceOracle"
+
+# Incentive System Contracts
+[[contracts]]
+fqn = "incentives::gas_discount::GasDiscountManager"
+
+[[contracts]]
+fqn = "incentives::lp_rewards_distributor::LpRewardsDistributor"
+
+[[contracts]]
+fqn = "incentives::incentive_manager::IncentiveManager"
