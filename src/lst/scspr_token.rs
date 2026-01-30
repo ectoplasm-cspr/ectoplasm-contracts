@@ -17,7 +17,7 @@ pub struct ScsprToken {
     name: Var<String>,
     /// Token symbol
     symbol: Var<String>,
-    /// Token decimals (18 to match CSPR)
+    /// Token decimals (9 to match CSPR)
     decimals: Var<u8>,
     /// Total supply of sCSPR tokens
     total_supply: Var<U256>,
@@ -38,7 +38,7 @@ impl ScsprToken {
         let caller = self.env().caller();
         self.name.set(String::from("Staked CSPR"));
         self.symbol.set(String::from("sCSPR"));
-        self.decimals.set(18);
+        self.decimals.set(9);
         self.total_supply.set(U256::zero());
         self.staking_manager.set(staking_manager);
         self.admin.set(caller);

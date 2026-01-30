@@ -22,7 +22,7 @@ The LST system enables liquid staking on Casper Network, allowing users to stake
    - **CEP-4626 compliant vault** for CSPR staking
    - Handles stake/unstake/withdraw flows
    - Manages exchange rate between CSPR and sCSPR
-   - Tracks validator delegations
+   - Validator management (future integration)
    - Distributes staking rewards
    - Provides standard vault interface for integrations
 
@@ -53,8 +53,8 @@ The LST system enables liquid staking on Casper Network, allowing users to stake
 
 ### 🎯 Validator Management
 - Admin can add/remove approved validators
-- Stake distribution across multiple validators
-- Track delegation per validator
+- (Planned) Stake distribution across multiple validators
+- (Planned) Track delegation per validator
 
 ### 🛡️ Security Features
 - Pausable contract for emergency situations
@@ -69,19 +69,16 @@ The LST system enables liquid staking on Casper Network, allowing users to stake
 #### Staking CSPR (Traditional Interface)
 
 ```rust
-// 1. Choose an approved validator
-let validator = staking_manager.get_validators()[0];
-
-// 2. Stake CSPR (minimum 100 CSPR)
+// Stake CSPR (minimum 100 CSPR)
 let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
-let scspr_amount = staking_manager.stake(validator, cspr_amount);
+let scspr_amount = staking_manager.stake(cspr_amount);
 // Receives sCSPR tokens at current exchange rate
 ```
 
 #### Staking CSPR (CEP-4626 Interface)
 
 ```rust
-// Standard vault deposit - uses first available validator
+// Standard vault deposit
 let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
 let scspr_minted = staking_manager.deposit(cspr_amount, user_address);
 // Receives sCSPR shares at current exchange rate

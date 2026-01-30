@@ -89,7 +89,7 @@ convert_to_shares(assets: U256) -> U256   // CSPR → sCSPR
 convert_to_assets(shares: U256) -> U256   // sCSPR → CSPR
 
 // LST-Specific
-stake(validator: Address, cspr_amount: U256) -> U256
+stake(cspr_amount: U256) -> U256
 unstake(scspr_amount: U256) -> u64  // Returns request_id
 withdraw_unstaked(request_id: u64)
 distribute_rewards(rewards_amount: U256)

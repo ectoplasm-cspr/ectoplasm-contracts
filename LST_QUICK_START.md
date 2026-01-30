@@ -10,13 +10,9 @@ The Liquid Staking Token (LST) system allows users to stake CSPR and receive sCS
 
 #### Stake CSPR
 ```rust
-// Choose a validator
-let validators = staking_manager.get_validators();
-let validator = validators[0];
-
 // Stake CSPR (minimum 100 CSPR)
 let cspr_amount = U256::from(1000_000_000_000u64); // 1000 CSPR
-let scspr_received = staking_manager.stake(validator, cspr_amount);
+let scspr_received = staking_manager.stake(cspr_amount);
 ```
 
 #### Check Exchange Rate
@@ -44,7 +40,7 @@ println!("Withdrawable at: {}", request.withdrawable_at);
 #### Withdraw CSPR
 ```rust
 // After waiting period (~16 hours)
-staking_manager.withdraw(request_id);
+staking_manager.withdraw_unstaked(request_id);
 ```
 
 #### Use sCSPR in DeFi

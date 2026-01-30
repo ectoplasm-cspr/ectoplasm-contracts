@@ -7,7 +7,8 @@
 //! for liquid staking, providing a standardized interface for CSPR staking.
 
 use odra::prelude::*;
-use odra::casper_types::{U256, U512};
+use odra::casper_types::U256;
+use odra::uints::ToU512;
 use odra::ContractRef;
 use super::errors::LstError;
 use super::events::*;
@@ -88,7 +89,8 @@ impl StakingManager {
         // Set initial values
         self.total_cspr_staked.set(U256::zero());
         self.total_scspr_supply.set(U256::zero());
-        self.minimum_stake.set(U256::from(1_000_000_000u64)); // 1 CSPR minimum (9 decimals)
+        self.minimum_stake
+            .set(U256::from(100_000_000_000u64)); // 100 CSPR minimum (9 decimals)
         self.unstaking_period.set(57_600); // ~16 hours (7 eras)
         self.next_unstake_request_id.set(0);
         self.admin.set(caller);
@@ -266,7 +268,7 @@ impl StakingManager {
         self.total_cspr_staked.set(current_total - request.cspr_amount);
         
         // Transfer CSPR to user
-        let cspr_amount_u512 = U512::from(request.cspr_amount.as_u128());
+        let cspr_amount_u512 = request.cspr_amount.to_u512();
         self.env().transfer_tokens(&caller, &cspr_amount_u512);
         
         // Emit event
