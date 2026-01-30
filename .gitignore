@@ -19,3 +19,5 @@ secret_key*
 # Deployment artifacts
 deployment_info.json
 deployment_*.json
+/casper-js-sdk-dev
+/odra-release-2.5.0
